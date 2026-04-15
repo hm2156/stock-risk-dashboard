@@ -4,21 +4,23 @@ ML-powered market risk intelligence platform. Monitors 20 major stocks
 in real time using anomaly detection and quantile regression to flag 
 unusual behavior and predict tomorrow's closing price range.
 
+**Live demo:** [alphawatch.streamlit.app](https://alphawatch.streamlit.app/)
+
 ---
 
 ## Models
 
-### Anomaly detection — Isolation Forest
+### Anomaly detection : Isolation Forest
 
-Detects unusual market behavior by identifying days that are statistically 
-isolated from normal trading patterns across 21 engineered features.
+Detect unusual market behavior by identifying days that are statistically   
+isolated from normal trading patterns across 21 engineered features.  
 Outputs a daily risk score (0–100) per ticker.
 
-- Fitted on training data only — never val or test
+- Fitted on training data only - never val or test
 - Validated against real market events (earnings, macro shocks, crashes)
 - Every flagged date in validation mapped to a real, explainable event
 
-### Price prediction — LightGBM quantile regression
+### Price prediction : LightGBM quantile regression
 
 Three separate LightGBM models trained per ticker — one each for the 
 10th, 50th, and 90th percentile — outputting a price confidence range 
@@ -59,7 +61,7 @@ across different market environments. Converts back to price at inference.
 
 ## Data leakage prevention
 
-All features shifted by 1 day, model never sees same-day or future data.
+All features shifted by 1 day — model never sees same-day or future data.
 Verified with 8 independent checks:
 
 - Zero overlap across train / val / test splits
@@ -84,12 +86,16 @@ Verified with 8 independent checks:
 
 ## Setup
 
+Trained models are already included in the repo.
+You only need to run `ingest.py` and `train_all.py` if you want 
+to pull fresh data or retrain from scratch.
+
 ```bash
-git clone https://github.com/hm2156/alphawatch
-cd alphawatch
+git clone https://github.com/hm2156/stock-risk-dashboard
+cd stock-risk-dashboard
 pip install -r requirements.txt
-python ingest.py       # download 3 years of data for 20 tickers
-python train_all.py    # train all models (~3 mins)
+python ingest.py        # optional , download latest data
+python train_all.py     # optional, retrain all models (~3 mins)
 streamlit run app/main.py
 ```
 
