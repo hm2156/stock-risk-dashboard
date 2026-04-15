@@ -48,6 +48,12 @@ def score_anomalies(df: pd.DataFrame, scaler: StandardScaler, model: IsolationFo
 
     # flip and normalize to 0-100
     flipped = -raw_scores
+
+    # handle single row case
+    if len(flipped) == 1:
+        score = float(np.clip((flipped[0] - 0.3) / 0.4 * 100, 0, 100))
+        return pd.Series([score], index=df.index, name="risk_score")
+
     min_s, max_s = flipped.min(), flipped.max()
     normalized = (flipped - min_s) / (max_s - min_s) * 100
 
@@ -58,7 +64,7 @@ def save_anomaly_model(scaler, model, save_dir="models/anomaly"):
     os.makedirs(save_dir, exist_ok=True)
     joblib.dump(scaler, f"{save_dir}/scaler.pkl")
     joblib.dump(model,  f"{save_dir}/isolation_forest.pkl")
-    print(f"Saved scaler and model to {save_dir}/")
+    print(f"  Saved anomaly model to {save_dir}/")
 
 
 def load_anomaly_model(save_dir="models/anomaly"):

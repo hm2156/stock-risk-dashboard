@@ -6,7 +6,6 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 import joblib
 import os
 
-# features fed into the prediction model
 PREDICT_FEATURES = [
     "volume",
     "return_1d", "return_5d", "return_20d",
@@ -17,65 +16,80 @@ PREDICT_FEATURES = [
     "lag_1", "lag_2", "lag_3",
     "day_of_week", "month", "volume_trend"
 ]
+
 QUANTILES = [0.1, 0.5, 0.9]
 
 
 def train_prediction_models(train: pd.DataFrame, val: pd.DataFrame):
     """
-    Trains 3 separate LightGBM models,one per quantile.
+    Trains 3 LightGBM models — one per quantile.
+    Target is now next day return (%), not raw price.
     """
     X_train = train[PREDICT_FEATURES]
-    y_train = train["target_close"].values
-    X_val   = val[PREDICT_FEATURES]
-    y_val   = val["target_close"].values
+    y_train = train["target_return"].values
 
+    X_val   = val[PREDICT_FEATURES]
+    y_val   = val["target_return"].values
+
+    # fit scaler on train only
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled   = scaler.transform(X_val)
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train),
+        columns=PREDICT_FEATURES,
+        index=train.index
+    )
+    X_val_scaled = pd.DataFrame(
+        scaler.transform(X_val),
+        columns=PREDICT_FEATURES,
+        index=val.index
+    )
 
     models = {}
 
     for q in QUANTILES:
-        print(f"Training quantile {q}...")
-
+        print(f"  Training quantile {q}...")
         model = LGBMRegressor(
             objective="quantile",
             alpha=q,
             n_estimators=200,
-            learning_rate=0.03,    # was 0.05 — slower learning = more generalization
+            learning_rate=0.03,
             num_leaves=15,
-            min_child_samples=30,  # was 20 — even stricter
-            subsample=0.7,         # was 0.8 — see even less data per tree
-            colsample_bytree=0.7,  # was 0.8
-            reg_lambda=2.0,        # was 1.0 — stronger penalty
+            min_child_samples=30,
+            subsample=0.7,
+            colsample_bytree=0.7,
+            reg_lambda=2.0,
             random_state=42,
             verbose=-1
         )
-
         model.fit(
             X_train_scaled, y_train,
             eval_set=[(X_val_scaled, y_val)],
         )
-
         models[q] = model
-        print(f"  Done.")
 
     return scaler, models
 
 
 def predict(df: pd.DataFrame, scaler: StandardScaler, models: dict) -> pd.DataFrame:
-    X        = df[PREDICT_FEATURES]  # keep as DataFrame, not numpy array
+    """
+    Returns predicted returns (lower, median, upper)
+    plus the actual return for comparison.
+    """
+    X = df[PREDICT_FEATURES]
     X_scaled = pd.DataFrame(
         scaler.transform(X),
-        columns=PREDICT_FEATURES,    # preserve column names through the scaler
+        columns=PREDICT_FEATURES,
         index=df.index
     )
 
     results = pd.DataFrame(index=df.index)
-    results["actual"] = df["target_close"].values
-    results["lower"]  = models[0.1].predict(X_scaled)
-    results["median"] = models[0.5].predict(X_scaled)
-    results["upper"]  = models[0.9].predict(X_scaled)
+    if "target_return" in df.columns:
+        results["actual_return"] = df["target_return"].values
+    else:
+        results["actual_return"] = None
+    results["lower"]         = models[0.1].predict(X_scaled)
+    results["median"]        = models[0.5].predict(X_scaled)
+    results["upper"]         = models[0.9].predict(X_scaled)
 
     # fix quantile crossing
     results["lower"] = results[["lower", "median"]].min(axis=1)
@@ -83,25 +97,39 @@ def predict(df: pd.DataFrame, scaler: StandardScaler, models: dict) -> pd.DataFr
 
     return results
 
-def evaluate(results: pd.DataFrame, split_name: str):
-    """
-    Prints MAE and RMSE for the median prediction.
-    Also prints how often the actual price fell inside the predicted range.
-    """
-    mae  = mean_absolute_error(results["actual"], results["median"])
-    rmse = mean_squared_error(results["actual"],  results["median"]) ** 0.5
 
-    # coverage — what % of actual prices landed inside our lower/upper band
+def returns_to_prices(results: pd.DataFrame, raw_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converts predicted returns back to price predictions.
+    today_close × (1 + predicted_return) = predicted price
+    """
+    today_close = raw_df["Close"].reindex(results.index)
+
+    prices = pd.DataFrame(index=results.index)
+    prices["actual"] = today_close * (1 + results["actual_return"])
+    prices["lower"]  = today_close * (1 + results["lower"])
+    prices["median"] = today_close * (1 + results["median"])
+    prices["upper"]  = today_close * (1 + results["upper"])
+
+    return prices
+
+
+def evaluate(results: pd.DataFrame, raw_df: pd.DataFrame, split_name: str):
+    """
+    Converts returns to prices then evaluates MAE, RMSE, coverage.
+    """
+    prices = returns_to_prices(results, raw_df)
+
+    mae  = mean_absolute_error(prices["actual"], prices["median"])
+    rmse = mean_squared_error(prices["actual"],  prices["median"]) ** 0.5
+
     inside = (
-        (results["actual"] >= results["lower"]) &
-        (results["actual"] <= results["upper"])
+        (prices["actual"] >= prices["lower"]) &
+        (prices["actual"] <= prices["upper"])
     )
     coverage = inside.mean() * 100
 
-    print(f"\n{split_name} results:")
-    print(f"  MAE:      ${mae:.2f}")
-    print(f"  RMSE:     ${rmse:.2f}")
-    print(f"  Coverage: {coverage:.1f}%  (actual price inside predicted range)")
+    print(f"  {split_name} — MAE: ${mae:.2f}  RMSE: ${rmse:.2f}  Coverage: {coverage:.1f}%")
 
 
 def save_prediction_models(scaler, models, save_dir="models/prediction"):
@@ -109,7 +137,7 @@ def save_prediction_models(scaler, models, save_dir="models/prediction"):
     joblib.dump(scaler, f"{save_dir}/scaler.pkl")
     for q, model in models.items():
         joblib.dump(model, f"{save_dir}/lgbm_q{int(q*100)}.pkl")
-    print(f"\nSaved models to {save_dir}/")
+    print(f"  Saved prediction models to {save_dir}/")
 
 
 def load_prediction_models(save_dir="models/prediction"):
