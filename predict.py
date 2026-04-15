@@ -31,7 +31,7 @@ def train_prediction_models(train: pd.DataFrame, val: pd.DataFrame):
     X_val   = val[PREDICT_FEATURES]
     y_val   = val["target_return"].values
 
-    # fit scaler on train only
+    # fit scaler on train 
     scaler = StandardScaler()
     X_train_scaled = pd.DataFrame(
         scaler.fit_transform(X_train),

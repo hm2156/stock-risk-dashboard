@@ -153,8 +153,7 @@ def render():
 
         if col6.button("View →", key=row['ticker']):
             st.session_state["selected_ticker"] = row["ticker"]
-            st.session_state["current_page"] = 1   # index of Stock detail
-            st.rerun()
+            st.info(f"Go to the **Stock detail** tab to see {row['ticker']} details.")
 
     st.divider()
     st.caption(

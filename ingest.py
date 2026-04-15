@@ -19,7 +19,6 @@ def download_data(tickers, start, end, save_dir="data/raw"):
         print(f"Downloading {ticker}...")
         df = yf.download(ticker, start=start, end=end, auto_adjust=True)
 
-        # flatten columns if multi-level
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
         df = df[["Open", "High", "Low", "Close", "Volume"]]
 

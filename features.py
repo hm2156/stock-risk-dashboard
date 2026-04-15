@@ -4,7 +4,6 @@ import numpy as np
 def add_features(df: pd.DataFrame, live: bool = False) -> pd.DataFrame:
     feat = pd.DataFrame(index=df.index)
 
-    # --- all your existing feature code stays exactly the same ---
     feat["close"]        = df["Close"]
     feat["volume"]       = df["Volume"]
     feat["return_1d"]    = df["Close"].pct_change()
@@ -32,21 +31,15 @@ def add_features(df: pd.DataFrame, live: bool = False) -> pd.DataFrame:
         df["Volume"].rolling(20).mean()
     )
 
-    # leakage prevention — shift all features forward by 1
     feat = feat.shift(1)
 
-    # target
     feat["target_return"] = df["Close"].pct_change(-1) * -1
 
     if live:
-        # in live mode — drop NaNs from rolling windows but KEEP the last row
-        # even though target_return is NaN (we don't need it for prediction)
         feature_cols = [c for c in feat.columns if c != "target_return"]
         feat = feat.dropna(subset=feature_cols)
-        # take only the last row and drop target
         feat = feat.iloc[[-1]].drop(columns=["target_return"])
     else:
-        # normal training mode — drop all NaN rows including target
         feat = feat.dropna()
 
     return feat

@@ -12,7 +12,6 @@ def get_live_features(ticker: str) -> tuple:
     raw.columns = [col[0] if isinstance(col, tuple) else col for col in raw.columns]
     raw = raw[["Open", "High", "Low", "Close", "Volume"]]
 
-    # live=True keeps the last row even without a target
     feat = add_features(raw, live=True)
 
     print(f"  Feature date: {feat.index[0].date()}")
@@ -28,25 +27,19 @@ def predict_today(ticker: str) -> dict:
     """
     print(f"Fetching live data for {ticker}...")
 
-    # get today's feature row
     today_feat, raw = get_live_features(ticker)
     today_date = today_feat.index[0].date()
 
-    # load trained models for this ticker
     scaler_a, model_a = load_anomaly_model(save_dir=f"models/anomaly/{ticker}")
     scaler_p, models_p = load_prediction_models(save_dir=f"models/prediction/{ticker}")
 
-    # get risk score for today
     risk_scores = score_anomalies(today_feat, scaler_a, model_a)
     risk_score  = round(risk_scores.iloc[0], 1)
 
-    # get tomorrow's predicted return
     pred_results = predict(today_feat, scaler_p, models_p)
 
-    # convert return to price
     price_preds = returns_to_prices(pred_results, raw)
 
-    # today's actual close
     today_close = raw["Close"].iloc[-1]
 
     result = {

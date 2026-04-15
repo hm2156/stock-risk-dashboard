@@ -50,11 +50,6 @@ def render(ticker: str):
         - MAE = average dollar error on the median prediction
         - Coverage = % of actual prices that landed inside the predicted band
         """)
-
-    if st.button("← Back to overview"):
-        st.session_state["current_page"] = 0   # index of Portfolio overview
-        st.rerun()
-
     # load data
     with st.spinner(f"Loading {ticker} data..."):
         hist      = load_historical_data(ticker)
